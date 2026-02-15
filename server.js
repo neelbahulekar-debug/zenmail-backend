@@ -1,4 +1,4 @@
-// server.js — REFINED VERSION WITH BUG FIXES
+// server.js — PRODUCTION READY VERSION
 
 const express = require('express');
 const { Pool } = require('pg');
@@ -10,12 +10,12 @@ const session = require('express-session');
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 /* ================= CORS WITH CREDENTIALS ================= */
 
 app.use(cors({
-  origin: 'http://localhost:5173', // Your React app URL
+  origin: process.env.FRONTEND_URL || 'https://zenmail-frontend.vercel.app',
   credentials: true // CRITICAL: Allow cookies to be sent
 }));
 
@@ -28,7 +28,8 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // Set to true if using HTTPS
+    secure: process.env.NODE_ENV === 'production', // true in production (HTTPS)
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
@@ -38,6 +39,7 @@ app.use(session({
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
 pool.connect()
@@ -51,6 +53,17 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_SECRET,
   process.env.GOOGLE_REDIRECT_URI
 );
+
+/* ================= HEALTH CHECK ================= */
+
+app.get('/', (req, res) => {
+  res.json({
+    status: 'running',
+    message: 'ZenMail Backend API',
+    version: '1.0.0',
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
 
 /* ================= TEST ROUTE ================= */
 
@@ -69,7 +82,6 @@ app.get('/gmail/status', async (req, res) => {
   try {
     console.log('📧 Checking Gmail status...');
     console.log('Session ID:', req.sessionID);
-    console.log('Session data:', req.session);
 
     // Check if user has a connected account in session
     if (req.session.gmailEmail) {
@@ -144,7 +156,8 @@ app.get('/auth/google/callback', async (req, res) => {
 
     if (!code) {
       console.error('❌ No authorization code received');
-      return res.redirect('http://localhost:5173?error=no_code');
+      const frontendUrl = process.env.FRONTEND_URL || 'https://zenmail-frontend.vercel.app';
+      return res.redirect(`${frontendUrl}?error=no_code`);
     }
 
     // Exchange code for tokens
@@ -194,13 +207,15 @@ app.get('/auth/google/callback', async (req, res) => {
       if (err) {
         console.error('❌ Session save error:', err);
       }
-      res.redirect('http://localhost:5173?success=true');
+      const frontendUrl = process.env.FRONTEND_URL || 'https://zenmail-frontend.vercel.app';
+      res.redirect(`${frontendUrl}?success=true`);
     });
 
   } catch (err) {
     console.error('❌ OAuth error:', err.message);
     console.error(err.stack);
-    res.redirect('http://localhost:5173?error=oauth_failed');
+    const frontendUrl = process.env.FRONTEND_URL || 'https://zenmail-frontend.vercel.app';
+    res.redirect(`${frontendUrl}?error=oauth_failed`);
   }
 });
 
@@ -662,13 +677,10 @@ app.post('/gmail/disconnect', async (req, res) => {
 /* ================= START SERVER ================= */
 
 app.listen(PORT, () => {
-  console.log('\n🚀 Backend running');
+  console.log('\n🚀 ZenMail Backend Running');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📍 Server:  http://localhost:3000');
-  console.log('🔐 Auth:    http://localhost:3000/auth/google');
-  console.log('📧 Emails:  http://localhost:3000/gmail/emails');
-  console.log('📤 Send:    http://localhost:3000/gmail/send');
-  console.log('📊 Status:  http://localhost:3000/gmail/status');
-  console.log('🧪 Test DB: http://localhost:3000/test-db');
+  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📍 Port: ${PORT}`);
+  console.log(`📍 Frontend: ${process.env.FRONTEND_URL || 'https://zenmail-frontend.vercel.app'}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 });
