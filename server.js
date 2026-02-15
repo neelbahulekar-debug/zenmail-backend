@@ -648,23 +648,38 @@ app.post('/gmail/send', async (req, res) => {
 
 app.post('/gmail/disconnect', async (req, res) => {
   try {
-    // Clear session
-    if (req.session.gmailEmail) {
-      const email = req.session.gmailEmail;
-      req.session.destroy();
+    console.log('🚪 Disconnecting Gmail...');
+    
+    // Get email from session
+    const email = req.session.gmailEmail;
+    
+    // Delete from database
+    if (email) {
+      await pool.query(
+        'DELETE FROM gmail_accounts WHERE gmail_email = $1',
+        [email]
+      );
+      console.log('✅ Deleted from database:', email);
+    }
+    
+    // Destroy session
+    req.session.destroy((err) => {
+      if (err) {
+        console.error('❌ Session destroy error:', err);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to destroy session'
+        });
+      }
       
-      console.log('✅ Disconnected:', email);
+      console.log('✅ Session destroyed');
       
       res.json({
         success: true,
         message: 'Disconnected successfully'
       });
-    } else {
-      res.json({
-        success: false,
-        message: 'No active session'
-      });
-    }
+    });
+    
   } catch (err) {
     console.error('❌ Disconnect error:', err.message);
     res.status(500).json({
